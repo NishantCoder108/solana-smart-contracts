@@ -1,23 +1,24 @@
 "use client";
 import { rpc } from "@/lib/solana/rpc";
 import { address, Lamports } from "@solana/kit";
-import { useWallet } from "@solana/wallet-adapter-react";
+// import { useWallet } from "@solana/wallet-adapter-react";
 import { useEffect, useState } from "react";
+import { useSolana } from "../solana-provider";
 
 const WalletBalance = () => {
-  const wallet = useWallet();
+  const { selectedAccount: account } = useSolana();
   const [balance, setBalance] = useState<Lamports | null>(null);
 
   const fetchBalance = async () => {
-    if (!wallet?.publicKey) {
+    if (!account?.address) {
       setBalance(null);
       return;
     }
 
-    const acc = address(wallet.publicKey.toString());
+    const acc = account.address.toString();
 
     try {
-      const { value } = await rpc.getBalance(acc).send();
+      const { value } = await rpc.getBalance(address(acc)).send();
       setBalance(value);
     } catch (error) {
       setBalance(null);
@@ -26,7 +27,7 @@ const WalletBalance = () => {
 
   useEffect(() => {
     fetchBalance();
-  }, [wallet.connected]);
+  }, [account?.address]);
 
   return (
     <div>
