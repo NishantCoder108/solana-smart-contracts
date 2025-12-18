@@ -1,30 +1,32 @@
 "use client";
-import {
-  getUserVaultLamportsPda,
-  getUserVaultPda,
-} from "@/lib/programs/accounts";
+import { getUserVaultPdas } from "@/lib/programs/accounts";
 import { Address } from "@solana/kit";
 import { useWallet } from "@solana/wallet-adapter-react";
 import React, { useEffect, useState } from "react";
+import { useSolana } from "../solana-provider";
 
 const Accounts = () => {
-  const [userAccounts, setUserAccounts] = useState<Address[]>([]);
-  const wallet = useWallet();
+  const [userAccounts, setUserAccounts] = useState<string[]>([]);
+  //   const wallet = useWallet();
+  const { selectedAccount, isConnected } = useSolana();
 
   const fetchUserAccounts = async () => {
-    if (!wallet.publicKey) return;
-    const [vaultPda, lamportsPda] = await Promise.all([
-      getUserVaultPda(wallet.publicKey.toString()),
-      getUserVaultLamportsPda(wallet.publicKey.toString()),
-    ]);
+    if (!selectedAccount) return;
+    // const [vaultPda, lamportsPda] = await Promise.all([
+    //   getUserVaultPdas(wallet.publicKey.toString()),
+    //   getUserVaultLamportsPda(wallet.publicKey.toString()),
+    // ]);
 
-    console.log({ vaultPda, lamportsPda });
-    setUserAccounts([vaultPda[0], lamportsPda[0]]);
+    const { userVault, userVaultLamports } = await getUserVaultPdas(
+      selectedAccount.address
+    );
+    console.log({ userVault, userVaultLamports });
+    setUserAccounts([userVault, userVaultLamports]);
   };
 
   useEffect(() => {
     fetchUserAccounts();
-  }, [wallet.connected]);
+  }, [selectedAccount?.address]);
   return (
     <div>
       Accounts :{" "}
