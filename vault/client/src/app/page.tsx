@@ -1,4 +1,7 @@
 import Accounts from "@/components/vault/Accounts";
+import Instructions from "@/components/vault/Instructions";
+import { MemoCard } from "@/components/vault/memo-card";
+import { WalletConnectButton } from "@/components/wallet-connect";
 import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 import WalletBalance from "@/components/wallet/WalletBalance";
 import Image from "next/image";
@@ -13,11 +16,16 @@ export default function Home() {
 
         <div className="flex items-center justify-center gap-5">
           <WalletBalance />
-          <ConnectWallet />
+          {/* <ConnectWallet /> */}
+          <WalletConnectButton />
         </div>
 
         <div className="my-12">
           <Accounts />
+        </div>
+        <div className="my-12">
+          {/* <Instructions /> */}
+          <MemoCard />
         </div>
       </main>
     </div>
