@@ -1,3 +1,5 @@
+"use client";
+import { useSolana } from "@/components/solana-provider";
 import Accounts from "@/components/vault/Accounts";
 import Instructions from "@/components/vault/Instructions";
 import { MemoCard } from "@/components/vault/memo-card";
@@ -7,6 +9,7 @@ import WalletBalance from "@/components/wallet/WalletBalance";
 import Image from "next/image";
 
 export default function Home() {
+  const { selectedAccount, isConnected } = useSolana();
   return (
     <div className="flex min-h-screen justify-center py-2.5 bg-zinc-50 font-sans dark:bg-black">
       <main className="">
@@ -24,7 +27,9 @@ export default function Home() {
           <Accounts />
         </div>
         <div className="my-12">
-          {/* <Instructions /> */}
+          {isConnected && selectedAccount?.address && (
+            <Instructions account={selectedAccount} />
+          )}
           <MemoCard />
         </div>
       </main>
