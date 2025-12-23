@@ -2,11 +2,9 @@
 import { useSolana } from "@/components/solana-provider";
 import Accounts from "@/components/vault/Accounts";
 import Instructions from "@/components/vault/Instructions";
-import { MemoCard } from "@/components/vault/memo-card";
 import { WalletConnectButton } from "@/components/wallet-connect";
 import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 import WalletBalance from "@/components/wallet/WalletBalance";
-import Image from "next/image";
 
 export default function Home() {
   const { selectedAccount, isConnected } = useSolana();
@@ -30,7 +28,7 @@ export default function Home() {
           {isConnected && selectedAccount?.address && (
             <Instructions account={selectedAccount} />
           )}
-          <MemoCard />
+          {/* <MemoCard /> */}
         </div>
       </main>
     </div>
