@@ -1,8 +1,9 @@
 import { LiteSVM } from "litesvm";
-import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import anchor from "@coral-xyz/anchor";
-import { encode as base58encode } from "bs58";
+import { getAssociatedTokenAddressSync, AccountLayout, ACCOUNT_SIZE, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, MintLayout, MINT_SIZE, } from "@solana/spl-token";
 import Idl from "../target/idl/escrow.json" with {type: "json"};
+import { assert, expect } from "chai";
 
 describe("LiteSVM: Escrow", () => {
 
@@ -11,82 +12,185 @@ describe("LiteSVM: Escrow", () => {
     const coder = new anchor.BorshCoder(Idl as anchor.Idl);
 
     const payer = Keypair.generate();
-    beforeAll(async () => {
-        await svm.airdrop(payer.publicKey, BigInt(10 * LAMPORTS_PER_SOL));
-        const programPath = new URL("../target/deploy/escrow.so", import.meta.url).pathname;
-        await svm.addProgramFromFile(programId, programPath);
-    });
+    svm.airdrop(payer.publicKey, BigInt(10 * LAMPORTS_PER_SOL));
 
-    it("maker: creates an escrow and deposits", async () => {
-        // Create Keypairs
-        const maker = Keypair.generate();
-        await svm.airdrop(maker.publicKey, BigInt(2 * LAMPORTS_PER_SOL));
+    const programPath = new URL("../target/deploy/escrow.so", import.meta.url).pathname;
+    svm.addProgramFromFile(programId, programPath);
 
-        // Simulate mints
-        const mintM = await svm.creaMiint(maker, 6);
-        const mintN = await svm.createMint(maker, 6);
+    const usdcMint = new PublicKey(
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    );
+    const bonkMint = new PublicKey(
+        "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
+    );
 
-        // Create associated token account for maker and mint tokens
-        const makerAtaM = await svm.createTokenAccount(mintM, maker.publicKey);
-        await svm.mintTo(mintM, makerAtaM, maker, BigInt(100_000_000)); // 100 tokens
+    const [escrowPda] = PublicKey.findProgramAddressSync([
+        Buffer.from("escrow"), payer.publicKey.toBuffer(),
+        new anchor.BN(1).toArrayLike(Buffer, "le", 8) //To match Rust's `seed.to_le_bytes().as_ref()`
+    ], programId);
 
-        const seed = 42n;
-        const wanted = 11_000_000n;    // 11 tokens for mintN
-        const offer = 66_000_000n;     // 66 tokens for mintM
+    const makerAtaM = getAssociatedTokenAddressSync(usdcMint, payer.publicKey, true);
+    const vaultAtaM = getAssociatedTokenAddressSync(usdcMint, escrowPda, true);
+    const usdcToOwn = BigInt(1_000_000_000_000);
 
-        // Derive escrow PDA
-        const escrowSeeds = [
-            Buffer.from("escrow"),
-            maker.publicKey.toBuffer(),
-            Buffer.from(Uint8Array.of(...Buffer.from(seed.toString(16).padStart(16, '0'), 'hex')))
-        ];
-        const [escrowPda] = await svm.derivePda(programId, escrowSeeds);
 
-        // Derive vault ATA
-        const vaultAta = await svm.createTokenAccount(mintM, escrowPda, { associated: true });
+    before("Initialized MINT token", () => {
 
-        // Prepare accounts as required by Anchor and IDL
-        const accounts = {
-            maker: maker.publicKey,
-            escrow: escrowPda,
-            mint_m: mintM,
-            mint_n: mintN,
-            maker_ata_m: makerAtaM,
-            vault: vaultAta,
-            associated_token_program: svm.associatedTokenProgram,
-            token_program: svm.tokenProgram,
-            system_program: svm.systemProgram
-        };
+        const usdcMintAuthority = PublicKey.unique();
+        const bonkMintAuthority = PublicKey.unique();
 
-        // Encode instruction data (Anchor 0.28+ style)
-        const ixData = coder.instruction.encode("maker", {
-            seed: Number(seed),
-            token_mint_n_expected: Number(wanted),
-            amount: Number(offer),
+        // 3. Allocate space for Mint account
+        const usdcMintData = Buffer.alloc(MINT_SIZE);
+        const bonkMintData = Buffer.alloc(MINT_SIZE);
+
+        // 4. Encode a VALID SPL Mint (USDC)
+        MintLayout.encode(
+            {
+                mintAuthorityOption: 1,          // authority exists
+                mintAuthority: usdcMintAuthority,
+                supply: BigInt(0),                      // no supply needed for tests
+                decimals: 6,                     // IMPORTANT: must match expectations
+                isInitialized: true,             // THIS FIXES error 3012
+                freezeAuthorityOption: 0,
+                freezeAuthority: PublicKey.default,
+            },
+            usdcMintData
+        );
+
+        // 4. Encode a VALID SPL Mint (BONK)
+        MintLayout.encode(
+            {
+                mintAuthorityOption: 1,
+                mintAuthority: bonkMintAuthority,
+                supply: BigInt(0),
+                decimals: 6,
+                isInitialized: true,
+                freezeAuthorityOption: 0,
+                freezeAuthority: PublicKey.default,
+            },
+            bonkMintData
+        );
+
+
+        svm.setAccount(usdcMint, {
+            lamports: 1_000_000_000,           // rent-exempt enough
+            data: usdcMintData,
+            owner: TOKEN_PROGRAM_ID,
+            executable: false,
         });
 
-        // Create and invoke transaction
-        const tx = await svm.buildAndSend({
-            payer,
-            signers: [maker],
-            instructions: [
-                {
-                    programId,
-                    accounts,
-                    data: ixData
-                }
-            ]
+        svm.setAccount(bonkMint, {
+            lamports: 1_000_000_000,
+            data: bonkMintData,
+            owner: TOKEN_PROGRAM_ID,
+            executable: false,
         });
 
-        // Verify the vault token account received the expected amount
-        const vaultBalance = await svm.getTokenAccountBalance(vaultAta);
-        expect(vaultBalance).toBe(Number(offer));
+        // Check BONK mint
+        const bonkMintAcct = svm.getAccount(bonkMint);
+        expect(bonkMintAcct).to.not.be.null;
+        const bMintData = bonkMintAcct?.data;
+        expect(bMintData).to.not.be.undefined;
+        const bonkDecoded = MintLayout.decode(bMintData);
+        expect(bonkDecoded.isInitialized).to.equal(true);
+        expect(bonkDecoded.decimals).to.equal(6);
+
+        // Check USDC mint
+        const usdcMintAcct = svm.getAccount(usdcMint);
+        expect(usdcMintAcct).to.not.be.null;
+        const uMintData = usdcMintAcct?.data;
+        expect(uMintData).to.not.be.undefined;
+        const usdcDecoded = MintLayout.decode(uMintData);
+        expect(usdcDecoded.isInitialized).to.equal(true);
+        expect(usdcDecoded.decimals).to.equal(6);
+
+    })
+
+    before("Initialized ATA (Associated Token Account)", () => {
+        const tokenAccData = Buffer.alloc(ACCOUNT_SIZE);
+
+        AccountLayout.encode(
+            {
+                mint: usdcMint,
+                owner: payer.publicKey,
+                amount: usdcToOwn,
+                delegateOption: 0,
+                delegate: PublicKey.default,
+                delegatedAmount: BigInt(0),
+                state: 1,
+                isNativeOption: 0,
+                isNative: BigInt(0),
+                closeAuthorityOption: 0,
+                closeAuthority: PublicKey.default,
+            },
+            tokenAccData,
+        );
+        svm.setAccount(makerAtaM, {
+            lamports: 1_000_000_000,
+            data: tokenAccData,
+            owner: TOKEN_PROGRAM_ID,
+            executable: false,
+        });
+
+        const rawAccount = svm.getAccount(makerAtaM);
+        expect(rawAccount, "Maker's ATA should exist after mint/ATA setup").to.not.be.null;
+        const rawAccountData = rawAccount?.data;
+        const decoded = AccountLayout.decode(rawAccountData);
+        expect(decoded.amount, "Maker's ATA should hold the correct initial USDC amount").to.eql(usdcToOwn);
     });
 
-    it("refund: allows maker to reclaim after open", async () => {
-        // TODO: Implement realistic refund branch (if code above has created escrow)
-        // For demonstration, only stub
-        expect(true).toBe(true);
-    });
+    it("Maker: Creates an escrow and deposits", async () => {
+        const ixArgs = {
+            amount: new anchor.BN(3000 * 10 ** 6), //3000 USDC giving
+            token_mint_n_expected: new anchor.BN(6000 * 10 ** 6), // 6000 BONK expecting
+            seed: new anchor.BN(1)
 
-})
+        }
+        const data = coder.instruction.encode("maker", ixArgs);
+
+        const ix = new TransactionInstruction({
+            keys: [
+                { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+                { pubkey: escrowPda, isSigner: false, isWritable: true },
+                { pubkey: usdcMint, isSigner: false, isWritable: false },
+                { pubkey: bonkMint, isSigner: false, isWritable: false },
+                { pubkey: makerAtaM, isSigner: false, isWritable: true },
+                { pubkey: vaultAtaM, isSigner: false, isWritable: true },
+                { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
+            ],
+            programId,
+            data
+        })
+
+        const tx = new Transaction().add(ix);
+        tx.feePayer = payer.publicKey;
+        tx.recentBlockhash = svm.latestBlockhash();
+        tx.sign(payer);
+        svm.sendTransaction(tx);
+
+        const makerAtaMAcc = svm.getAccount(makerAtaM);
+        const makerAtaMAccInfo = AccountLayout.decode(makerAtaMAcc.data);
+        const vaultAtaMAcc = svm.getAccount(vaultAtaM);
+        const vaultAtaMAccInfo = AccountLayout.decode(vaultAtaMAcc.data);
+        const escrowAccInfo = svm.getAccount(escrowPda);
+        const escrowAcc = coder.accounts.decode("Escrow", Buffer.from(escrowAccInfo.data));
+
+
+        // This test ensures that after calling the "maker" instruction,
+        // 1. The escrow account contains the correct USDC mint as mint_m.
+        // 2. The escrow account contains the correct BONK mint as mint_n.
+        // 3. The escrow's seed matches what we passed.
+        // 4. The escrow's expected amount for mint_n matches what we passed.
+        // 5. The correct amount of USDC was deposited into the vault account.
+        // 6. The payer's ATA for USDC was debited by the deposited amount, leaving the correct remaining balance.
+        assert.equal(usdcMint.toString(), escrowAcc.mint_m.toString(), "Escrow mint_m should be USDC mint public key");
+        assert.equal(bonkMint.toString(), escrowAcc.mint_n.toString(), "Escrow mint_n should be BONK mint public key");
+        assert.equal(ixArgs.seed.toNumber(), escrowAcc.seed.toNumber(), "Escrow seed should match what was provided");
+        assert.equal(ixArgs.token_mint_n_expected.toNumber(), escrowAcc.token_mint_n_expected.toNumber(), "Escrow token_mint_n_expected should match requested");
+        assert.equal(ixArgs.amount.toNumber(), Number(vaultAtaMAccInfo.amount), "Vault account should contain exactly deposited USDC");
+        assert.equal(Number(usdcToOwn) - Number(ixArgs.amount), Number(makerAtaMAccInfo.amount), "Maker's ATA should contain remaining USDC after deposit");
+    })
+});
+
