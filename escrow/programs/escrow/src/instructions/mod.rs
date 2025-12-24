@@ -1,11 +1,7 @@
-pub mod cancel;
-pub mod deposit_give;
-pub mod deposit_want;
-pub mod initialize;
-pub mod settle;
+pub mod maker;
+pub mod refund;
+pub mod taker;
 
-pub use cancel::*;
-pub use deposit_give::*;
-pub use deposit_want::*;
-pub use initialize::*;
-pub use settle::*;
+pub use maker::*;
+pub use refund::*;
+pub use taker::*;
