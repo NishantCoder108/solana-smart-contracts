@@ -3,7 +3,7 @@ mod errors;
 mod instructions;
 mod state;
 use instructions::*;
-declare_id!("7ttjDw7MEBJqCaxNc33GozzyH4EHmisaenM8QoyyU4c9");
+declare_id!("KMYaZW7KUS6atp5F645vZ5ynuR6aZ7TueiTtTCRes6e");
 
 #[program]
 pub mod escrow {
