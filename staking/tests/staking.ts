@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { Staking } from "../target/types/staking";
+import type { Staking } from "../target/types/staking.ts";
 
 describe("staking", () => {
   // Configure the client to use the local cluster.
@@ -8,9 +8,9 @@ describe("staking", () => {
 
   const program = anchor.workspace.staking as Program<Staking>;
 
-  it("Is initialized!", async () => {
-    // Add your test here.
-    const tx = await program.methods.initialize().rpc();
-    console.log("Your transaction signature", tx);
-  });
+  // it("Is initialized!", async () => {
+  //   // Add your test here.
+  //   const tx = await program.methods.initializePool().rpc();
+  //   console.log("Your transaction signature", tx);
+  // });
 });
