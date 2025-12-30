@@ -27,12 +27,21 @@ describe("LiteSVM: Staking", () => {
         poolCreator.publicKey.toBuffer(),
     ], programId);
 
-    const poolVault = getAssociatedTokenAddressSync(usdcMint, poolPda, true);
+    const [userStakePda] = PublicKey.findProgramAddressSync([
+        Buffer.from("user-stake"),
+        staker.publicKey.toBuffer(),
+        poolPda.toBuffer()
+    ], programId);
 
-    const MakerHaveUsdc = BigInt(1_000_000_000_000);
-    const TakerHaveBonk = BigInt(50_000_000_000);
-    const makerOfferedAmount = new anchor.BN(3000 * 10 ** 6); // USDC
-    const makerExpectedAmount = new anchor.BN(6000 * 10 ** 6); // BONK
+    const poolVault = getAssociatedTokenAddressSync(usdcMint, poolPda, true);
+    const userAta = getAssociatedTokenAddressSync(usdcMint, staker.publicKey, true); //USDC token 
+
+    const stakerHaveUsdc = BigInt(1_000_000_000_000);
+    // const TakerHaveBonk = BigInt(50_000_000_000);
+    // const makerOfferedAmount = new anchor.BN(3000 * 10 ** 6); // USDC
+    // const makerExpectedAmount = new anchor.BN(6000 * 10 ** 6); // BONK
+
+    const stakedTokenAmount = new anchor.BN(3000 * 10 ** 6); //USDC
 
     before("Initialized MINT token", () => {
         const usdcMintAuthority = PublicKey.unique();
@@ -69,7 +78,43 @@ describe("LiteSVM: Staking", () => {
         expect(usdcDecoded.isInitialized).to.equal(true);
         expect(usdcDecoded.decimals).to.equal(6);
     })
+    before("Initialized ATA (Associated Token Account)", () => {
+        const stakerAccData = Buffer.alloc(ACCOUNT_SIZE);
 
+
+        AccountLayout.encode(
+            {
+                mint: usdcMint,
+                owner: staker.publicKey,
+                amount: stakerHaveUsdc,
+                delegateOption: 0,
+                delegate: PublicKey.default,
+                delegatedAmount: BigInt(0),
+                state: 1,
+                isNativeOption: 0,
+                isNative: BigInt(0),
+                closeAuthorityOption: 0,
+                closeAuthority: PublicKey.default,
+            },
+            stakerAccData,
+        );
+
+        svm.setAccount(userAta, {
+            lamports: 1_000_000_000,
+            data: stakerAccData,
+            owner: TOKEN_PROGRAM_ID,
+            executable: false,
+        });
+
+        const usdcMintAcct = svm.getAccount(usdcMint);
+        const uMintData = usdcMintAcct?.data;
+        const usdcDecoded = MintLayout.decode(uMintData);
+
+        expect(usdcMintAcct).to.not.be.null;
+        expect(uMintData).to.not.be.undefined;
+        expect(usdcDecoded.isInitialized).to.equal(true);
+        expect(usdcDecoded.decimals).to.equal(6);
+    })
 
     it("Initialize Pool", async () => {
         const data = coder.instruction.encode("initialize_pool", {});
@@ -103,4 +148,48 @@ describe("LiteSVM: Staking", () => {
         assert.equal(poolAcc.reward_rate, 1);
         assert.equal(poolAcc.total_staked, 0);
     });
+
+    it("Stake USDC Token", async () => {
+        const ixArgs = {
+            amount: stakedTokenAmount
+        }
+        const data = coder.instruction.encode("stake", ixArgs);
+
+        const ix = new TransactionInstruction({
+            keys: [
+                { pubkey: staker.publicKey, isSigner: true, isWritable: true },
+                { pubkey: poolCreator.publicKey, isSigner: false, isWritable: true },
+                { pubkey: poolPda, isSigner: false, isWritable: true },
+                { pubkey: usdcMint, isSigner: false, isWritable: false },
+                { pubkey: poolVault, isSigner: false, isWritable: true },
+                { pubkey: userStakePda, isSigner: false, isWritable: true },
+                { pubkey: userAta, isSigner: false, isWritable: true },
+                { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
+            ],
+            programId,
+            data
+        })
+
+        const tx = new Transaction().add(ix);
+        tx.recentBlockhash = svm.latestBlockhash();
+        tx.feePayer = staker.publicKey;
+        tx.sign(staker);
+
+        svm.sendTransaction(tx);
+
+        const stakeAccInfo = svm.getAccount(userStakePda);
+        const stakeAcc = coder.accounts.decode("UserStake", Buffer.from(stakeAccInfo.data));
+        const poolAccInfo = svm.getAccount(poolPda);
+        const poolAcc = coder.accounts.decode("Pool", Buffer.from(poolAccInfo.data));
+
+        assert.equal(usdcMint.toString(), poolAcc.mint.toString());
+        assert.equal(poolVault.toString(), poolAcc.vault.toString());
+        assert.equal(userAta.toString(), stakeAcc.user_vault_ata.toString());
+        assert.equal(Number(stakeAcc.points), Number(0));
+        assert.equal(stakeAcc.amount.toNumber(), stakedTokenAmount.toNumber());
+        assert.equal(poolAcc.total_staked.toNumber(), stakedTokenAmount.toNumber());
+    });
+
 })
