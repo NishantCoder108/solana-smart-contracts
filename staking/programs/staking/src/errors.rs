@@ -7,4 +7,16 @@ pub enum StakingError {
 
     #[msg("Creator does not have enough sol for initialize the pool")]
     InsufficientSolBalance,
+
+    #[msg("Invalid authority")]
+    InvalidAuthority,
+
+    #[msg("Invalid mint address")]
+    InvalidMint,
+
+    #[msg("Insufficient token balance")]
+    InsufficientTokenBalance,
+
+    #[msg("Invalid staking amount")]
+    InvalidStakingAmount,
 }

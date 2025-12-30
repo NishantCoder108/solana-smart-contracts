@@ -12,9 +12,6 @@ use instructions::*;
 pub mod staking {
     use super::*;
 
-    // pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-    //     instructions::initialize(ctx)
-    // }
     #[instruction(discriminator = 0)]
     pub fn initialize_pool(ctx: Context<InitializePool>) -> Result<()> {
         instructions::initialize_pool(ctx)
