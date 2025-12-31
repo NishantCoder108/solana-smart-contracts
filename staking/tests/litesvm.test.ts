@@ -37,18 +37,13 @@ describe("LiteSVM: Staking", () => {
     const userAta = getAssociatedTokenAddressSync(usdcMint, staker.publicKey, true); //USDC token 
 
     const stakerHaveUsdc = BigInt(1_000_000_000_000);
-    // const TakerHaveBonk = BigInt(50_000_000_000);
-    // const makerOfferedAmount = new anchor.BN(3000 * 10 ** 6); // USDC
-    // const makerExpectedAmount = new anchor.BN(6000 * 10 ** 6); // BONK
 
     const stakedTokenAmount = new anchor.BN(5000 * 10 ** 6); //USDC
     const unstakeSomeTokenAmount = new anchor.BN(3000 * 10 ** 6); //USDC
+
     before("Initialized MINT token", () => {
         const usdcMintAuthority = PublicKey.unique();
-
-
         const usdcMintData = Buffer.alloc(MINT_SIZE);
-
 
         MintLayout.encode(
             {
@@ -73,14 +68,15 @@ describe("LiteSVM: Staking", () => {
         const usdcMintAcct = svm.getAccount(usdcMint);
         const uMintData = usdcMintAcct?.data;
         const usdcDecoded = MintLayout.decode(uMintData);
+
         expect(usdcMintAcct).to.not.be.null;
         expect(uMintData).to.not.be.undefined;
         expect(usdcDecoded.isInitialized).to.equal(true);
         expect(usdcDecoded.decimals).to.equal(6);
     })
+
     before("Initialized ATA (Associated Token Account)", () => {
         const stakerAccData = Buffer.alloc(ACCOUNT_SIZE);
-
 
         AccountLayout.encode(
             {
@@ -138,7 +134,7 @@ describe("LiteSVM: Staking", () => {
         tx.feePayer = poolCreator.publicKey;
         tx.sign(poolCreator);
 
-        const res = svm.sendTransaction(tx);
+        svm.sendTransaction(tx);
 
         const poolAccInfo = svm.getAccount(poolPda);
         const poolAcc = coder.accounts.decode("Pool", Buffer.from(poolAccInfo.data));
@@ -186,7 +182,6 @@ describe("LiteSVM: Staking", () => {
         const poolVaultInfo = svm.getAccount(poolVault);
         const poolVaultAcc = AccountLayout.decode(poolVaultInfo.data);
 
-
         assert.equal(Number(poolVaultAcc.amount), stakedTokenAmount.toNumber(), "Staked token at pool vault account");
         assert.equal(usdcMint.toString(), poolAcc.mint.toString(), "USDC address matches with pool mint address");
         assert.equal(poolVault.toString(), poolAcc.vault.toString());
@@ -225,8 +220,7 @@ describe("LiteSVM: Staking", () => {
         tx.feePayer = staker.publicKey;
         tx.sign(staker);
 
-        const re = svm.sendTransaction(tx);
-        console.log(re.toString())
+        svm.sendTransaction(tx);
 
         const stakeAccInfo = svm.getAccount(userStakePda);
         const stakeAcc = coder.accounts.decode("UserStake", Buffer.from(stakeAccInfo.data));
@@ -245,4 +239,46 @@ describe("LiteSVM: Staking", () => {
         assert.equal(poolAcc.total_staked.toNumber(), Number(stakedTokenAmount) - Number(unstakeSomeTokenAmount), " Pool token account must descrease the user's stake token amount");
     });
 
+
+    it("UnStakeAll USDC Token", async () => {
+        const ix = new TransactionInstruction({
+            keys: [
+                { pubkey: staker.publicKey, isSigner: true, isWritable: true },
+                { pubkey: poolCreator.publicKey, isSigner: false, isWritable: true },
+                { pubkey: poolPda, isSigner: false, isWritable: true },
+                { pubkey: usdcMint, isSigner: false, isWritable: false },
+                { pubkey: poolVault, isSigner: false, isWritable: true },
+                { pubkey: userStakePda, isSigner: false, isWritable: true },
+                { pubkey: userAta, isSigner: false, isWritable: true },
+                { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
+            ],
+            programId,
+
+            // The staking program expects the first bytes of the data buffer to match the discriminator for the instruction to the invoke.
+            // In the IDL, "unstake_all" has a discriminator of [5], so we must send Buffer.from([5]).
+            // Buffer.from("unstake_all") is a UTF-8 string, which will not match the expected single-byte discriminator and the program will reject the transaction.
+            data: Buffer.from([5])
+        })
+
+        const tx = new Transaction().add(ix);
+        tx.recentBlockhash = svm.latestBlockhash();
+        tx.feePayer = staker.publicKey;
+        tx.sign(staker);
+
+        svm.sendTransaction(tx);
+
+        const poolAccInfo = svm.getAccount(poolPda);
+        const poolAcc = coder.accounts.decode("Pool", Buffer.from(poolAccInfo.data));
+        assert.equal(poolAcc.total_staked.toNumber(), Number(stakedTokenAmount) - Number(stakedTokenAmount), " Pool token account state must descrease after withdraw all token");
+
+        const poolVaultInfo = svm.getAccount(poolVault);//usdc 
+        const poolVaultAcc = AccountLayout.decode(poolVaultInfo.data);
+        assert.equal(Number(poolVaultAcc.amount), Number(stakedTokenAmount) - Number(stakedTokenAmount), "Pool vault must amount decrease ");
+
+        const userStakeAcc = svm.getAccount(userStakePda);
+        assert.isNull(userStakeAcc, "UserStake account should be closed after unstake all token");
+
+    });
 })
