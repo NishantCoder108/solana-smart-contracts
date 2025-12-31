@@ -1,4 +1,4 @@
-import { LiteSVM, TransactionMetadata } from "litesvm";
+import { Clock, LiteSVM, TransactionMetadata } from "litesvm";
 import anchor from "@coral-xyz/anchor";
 import { assert, expect } from "chai";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
@@ -40,6 +40,17 @@ describe("LiteSVM: Staking", () => {
 
     const stakedTokenAmount = new anchor.BN(5000 * 10 ** 6); //USDC
     const unstakeSomeTokenAmount = new anchor.BN(3000 * 10 ** 6); //USDC
+
+    const timeBefore = BigInt(Math.floor(Date.now() / 1000));
+    const timeAfter = BigInt(Math.floor(Date.now() / 3000));
+    // svm.setClock({
+    //     unixTimestamp: BigInt(timeBefore),
+    //     slot: BigInt(1),
+    //     epoch: BigInt(1),
+    //     epochStartTimestamp: BigInt(0),
+    //     leaderScheduleEpoch: BigInt(0),
+    // });
+
 
     before("Initialized MINT token", () => {
         const usdcMintAuthority = PublicKey.unique();
@@ -265,6 +276,45 @@ describe("LiteSVM: Staking", () => {
         // console.log(getPointData);
 
         expect(Number(getPointData) === 0)
+
+    })
+
+    it("Claim points for stake token", () => {
+
+        const ix = new TransactionInstruction({
+            keys: [
+                { pubkey: staker.publicKey, isSigner: true, isWritable: false },
+                { pubkey: poolPda, isSigner: false, isWritable: false },
+                { pubkey: userStakePda, isSigner: false, isWritable: true }
+            ],
+            programId,
+            data: Buffer.from([3]) //claim_points
+        });
+
+        const tx = new Transaction().add(ix);
+        tx.feePayer = staker.publicKey;
+        tx.recentBlockhash = svm.latestBlockhash();
+        tx.sign(staker);
+
+        // Fix: use all required fields for svm.setClock to match the Clock type
+        // svm.setClock({
+        //     unixTimestamp: BigInt(Math.floor(Date.now() / 1000)),
+        //     slot: BigInt(100),
+        //     epoch: BigInt(1),
+        //     epochStartTimestamp: BigInt(0),
+        //     leaderScheduleEpoch: BigInt(0),
+        // });
+
+
+        const res = svm.sendTransaction(tx);
+        // console.log(res.toString())
+
+        const userStateInfo = svm.getAccount(userStakePda);
+        const userStateAcc = coder.accounts.decode("UserStake", Buffer.from(userStateInfo.data));
+        const now = Math.floor(Date.now() / 1000); // unix timestamp
+
+        assert.equal(Number(userStateAcc.points), 0);
+        assert.equal(Number(userStateAcc.last_claim), 0)
 
     })
 
