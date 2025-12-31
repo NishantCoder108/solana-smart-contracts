@@ -9,6 +9,10 @@ The Staking program allows users to deposit tokens into a staking pool and earn 
 ## 📊 Program Details
 
 - **Program ID**: `2t4tTkX9nEKuTHdZbVYYXwq188GBQQq35fh46xV1qBuw`
+- **IDL Account**: `AEgW9ghjVXPqpuSyxqrBkgb1YgFBpFVMHBJTzaPPzAwT`
+- **Deployed Signature**: `4xdPVCreD4LWnG1udpucTuTRiSZ1hECfdaswUakntyBvbEDbNNhFxBSLABiZjXZKMCgAyRCJhtpPCnAMjJfeTgKN`
+- **Security Metadata**: `Db6CCPJiWuWkXFpRrRLnz45npgKoM4ZrAFB9xjomVUhv`
+
 - **Framework**: Anchor 0.32.1
 - **Language**: Rust
 - **Blockchain**: Solana

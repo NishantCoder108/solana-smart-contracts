@@ -1,0 +1,13 @@
+{
+    "name": "Anchor Staking Program",
+    "project_url": "https://github.com/sol-warrior/solana-smart-contracts/tree/main/staking",
+    "contacts": [
+        "link:https://github.com/sol-warrior",
+        "twitter:warriorofsol"
+    ],
+    "preferred_languages": [
+        "en"
+    ],
+    "source_code": "https://github.com/sol-warrior/solana-smart-contracts/tree/main/staking",
+    "auditors": "None"
+}
