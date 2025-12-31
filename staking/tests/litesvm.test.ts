@@ -41,16 +41,6 @@ describe("LiteSVM: Staking", () => {
     const stakedTokenAmount = new anchor.BN(5000 * 10 ** 6); //USDC
     const unstakeSomeTokenAmount = new anchor.BN(3000 * 10 ** 6); //USDC
 
-    const timeBefore = BigInt(Math.floor(Date.now() / 1000));
-    const timeAfter = BigInt(Math.floor(Date.now() / 3000));
-    // svm.setClock({
-    //     unixTimestamp: BigInt(timeBefore),
-    //     slot: BigInt(1),
-    //     epoch: BigInt(1),
-    //     epochStartTimestamp: BigInt(0),
-    //     leaderScheduleEpoch: BigInt(0),
-    // });
-
 
     before("Initialized MINT token", () => {
         const usdcMintAuthority = PublicKey.unique();
@@ -202,7 +192,6 @@ describe("LiteSVM: Staking", () => {
         assert.equal(poolAcc.total_staked.toNumber(), stakedTokenAmount.toNumber());
     });
 
-
     it("UnStake some amount of USDC Token", async () => {
         const ixArgs = {
             amount: unstakeSomeTokenAmount
@@ -266,17 +255,37 @@ describe("LiteSVM: Staking", () => {
         tx.recentBlockhash = svm.latestBlockhash();
         tx.sign(staker);
 
+        //Calcuate time
+        const secondsIn30Days = 30 * 24 * 60 * 60;
+        const now = Math.floor(Date.now() / 1000);
+        const after30Days = now + secondsIn30Days;
+
+        const beforeAccInfo = svm.getAccount(userStakePda);
+        const beforeAcc = coder.accounts.decode("UserStake", Buffer.from(beforeAccInfo.data));
+        const oldLastClaim = BigInt(beforeAcc.last_claim.toString());
+
+        const c = svm.getClock();
+        svm.setClock(
+            new Clock(c.slot, c.epochStartTimestamp, c.epoch, c.leaderScheduleEpoch, BigInt(after30Days))
+        );
+
+        const c2 = svm.getClock();
+        const newTimestamp = BigInt(c2.unixTimestamp.toString());
+
         const res = svm.sendTransaction(tx);
 
         const resData = (res as TransactionMetadata).returnData();
         // console.log(resData.toString())
 
         const buffData = Buffer.from(resData.data())
-        const getPointData = buffData.readBigUInt64LE(0)
-        // console.log(getPointData);
+        const earnedPointData = buffData.readBigUInt64LE(0)
 
-        expect(Number(getPointData) === 0)
+        //Calcuate earned points
+        const elapsed = newTimestamp - oldLastClaim;
+        const perDay = elapsed / BigInt(86400);
+        const expectedPoints = perDay * BigInt(beforeAcc.amount) * BigInt(1);
 
+        assert.equal(earnedPointData, expectedPoints)
     })
 
     it("Claim points for stake token", () => {
@@ -367,6 +376,4 @@ describe("LiteSVM: Staking", () => {
         assert.isNull(userStakeAcc, "UserStake account should be closed after unstake all token");
 
     });
-
-
 })
